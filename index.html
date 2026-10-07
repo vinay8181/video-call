@@ -49,37 +49,71 @@
         let currentCall = null;
         let localStream = null;
 
+        // ===== Fix: purane WebView ke liye getUserMedia fallback =====
+        async function getCamera() {
+            // Naya tarika
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    return await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user' },
+                        audio: true
+                    });
+                } catch (e) {
+                    console.log('mediaDevices fail, fallback try kar rahe hain', e);
+                }
+            }
+
+            // Purana tarika (fallback)
+            const legacyGetUserMedia = navigator.getUserMedia 
+                || navigator.webkitGetUserMedia 
+                || navigator.mozGetUserMedia 
+                || navigator.msGetUserMedia;
+
+            if (!legacyGetUserMedia) {
+                throw new Error('Is device par camera support nahi hai. Android System WebView update karo Play Store se.');
+            }
+
+            return new Promise((resolve, reject) => {
+                legacyGetUserMedia.call(navigator,
+                    { video: true, audio: true },
+                    resolve,
+                    reject
+                );
+            });
+        }
+
         // Camera aur mic chalu karo
         async function initCamera() {
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user' },
-                    audio: true
-                });
+                localStream = await getCamera();
                 document.getElementById('localVideo').srcObject = localStream;
                 statusEl.textContent = 'Camera ready. Room ID daalo...';
                 roomBox.style.display = 'block';
             } catch (err) {
                 statusEl.textContent = 'Camera error: ' + err.message;
-                alert('Camera/Mic ki permission do!');
+                console.error('Camera error:', err);
             }
         }
 
-        // Dono taraf ka video dikhao
+        // Remote stream dikhao
         function showRemote(stream) {
             document.getElementById('remoteVideo').srcObject = stream;
             statusEl.textContent = '✅ Connected! Video aa gaya.';
         }
 
-        // Connect button dabane par
+        // Connect button
         async function connectNow() {
             const roomId = document.getElementById('roomInput').value.trim();
             if (!roomId) { alert('Room ID daalo'); return; }
 
+            if (!localStream) {
+                alert('Camera ready nahi hai. Page reload karo.');
+                return;
+            }
+
             roomBox.style.display = 'none';
             statusEl.textContent = 'Room join kar rahe hain...';
 
-            // Fixed room ID se Peer banate hain
             peer = new Peer('vc-' + roomId, {
                 debug: 1,
                 config: {
@@ -92,7 +126,6 @@
 
             peer.on('open', (id) => {
                 statusEl.textContent = 'Room me ho. Doosre ka wait...';
-                // Doosre peer ko call karo (agar wo pehle se hai)
                 const call = peer.call('vc-' + roomId, localStream);
                 if (call) {
                     currentCall = call;
@@ -100,7 +133,6 @@
                 }
             });
 
-            // Doosra banda aaye to uska call accept karo
             peer.on('call', (call) => {
                 call.answer(localStream);
                 currentCall = call;
@@ -110,7 +142,6 @@
             peer.on('error', (err) => {
                 console.log('Peer error:', err);
                 if (err.type === 'unavailable-id') {
-                    // Same room me doosra banda pehle se hai
                     statusEl.textContent = 'Room me pehle se koi hai. Wait karo...';
                 } else {
                     statusEl.textContent = 'Error: ' + err.type;
