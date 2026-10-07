@@ -5,60 +5,120 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Call</title>
     <style>
-        body { margin: 0; background: #000; display: flex; flex-wrap: wrap; font-family: sans-serif; }
-        video { width: 50%; height: 50vh; object-fit: cover; background: #111; }
-        #status { position: fixed; bottom: 10px; left: 10px; color: #fff; font-size: 14px; background: rgba(0,0,0,0.6); padding: 6px 10px; border-radius: 6px; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #000; font-family: sans-serif; color: #fff; overflow: hidden; }
+        video { width: 50%; height: 100vh; object-fit: cover; background: #111; float: left; }
+        #status {
+            position: fixed; bottom: 12px; left: 12px; right: 12px;
+            color: #fff; font-size: 14px; background: rgba(0,0,0,0.7);
+            padding: 10px 14px; border-radius: 8px; text-align: center;
+        }
+        #roomBox {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #222; padding: 20px; border-radius: 12px; text-align: center;
+            width: 85%; max-width: 320px; display: none;
+        }
+        #roomBox input {
+            width: 100%; padding: 10px; margin: 10px 0; border-radius: 6px;
+            border: none; font-size: 16px; text-align: center;
+        }
+        #roomBox button {
+            width: 100%; padding: 12px; background: #4CAF50; color: #fff;
+            border: none; border-radius: 6px; font-size: 16px; font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <video id="localVideo" autoplay muted playsinline></video>
     <video id="remoteVideo" autoplay playsinline></video>
-    <div id="status">Connecting...</div>
 
-    <script type="module">
-        import { joinRoom } from 'https://cdn.skypack.dev/trystero@0.21/supabase';
+    <div id="status">Camera chalu kar rahe hain...</div>
 
-        // ✅ Tumhari Supabase details
-        const config = {
-            appId: 'https://yxbbejknyvktxswntift.supabase.co',
-            supabaseKey: 'sb_publishable_pxcSuKsu_SUvwrm-ng8xxg_yOoEarNK'
-        };
+    <div id="roomBox">
+        <h3 style="margin-top:0;">Room ID daalo</h3>
+        <p style="font-size:13px;color:#aaa;">Dono phones me SAME room ID daalni hai</p>
+        <input id="roomInput" type="text" placeholder="jaise: room123" value="room123">
+        <button onclick="connectNow()">Connect</button>
+    </div>
 
-        const ROOM_NAME = 'video-call-room';
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script>
         const statusEl = document.getElementById('status');
+        const roomBox = document.getElementById('roomBox');
+        let peer = null;
+        let currentCall = null;
+        let localStream = null;
 
-        try {
-            statusEl.textContent = 'Camera on kar rahe hain...';
+        // Camera aur mic chalu karo
+        async function initCamera() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user' },
+                    audio: true
+                });
+                document.getElementById('localVideo').srcObject = localStream;
+                statusEl.textContent = 'Camera ready. Room ID daalo...';
+                roomBox.style.display = 'block';
+            } catch (err) {
+                statusEl.textContent = 'Camera error: ' + err.message;
+                alert('Camera/Mic ki permission do!');
+            }
+        }
 
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true
-            });
-            document.getElementById('localVideo').srcObject = stream;
+        // Dono taraf ka video dikhao
+        function showRemote(stream) {
+            document.getElementById('remoteVideo').srcObject = stream;
+            statusEl.textContent = '✅ Connected! Video aa gaya.';
+        }
 
+        // Connect button dabane par
+        async function connectNow() {
+            const roomId = document.getElementById('roomInput').value.trim();
+            if (!roomId) { alert('Room ID daalo'); return; }
+
+            roomBox.style.display = 'none';
             statusEl.textContent = 'Room join kar rahe hain...';
 
-            const room = joinRoom(config, ROOM_NAME);
-            room.addStream(stream);
-
-            room.onPeerJoin((peerId) => {
-                statusEl.textContent = 'Peer connected: ' + peerId.slice(0,6);
+            // Fixed room ID se Peer banate hain
+            peer = new Peer('vc-' + roomId, {
+                debug: 1,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
             });
 
-            room.onPeerStream((remoteStream, peerId) => {
-                statusEl.textContent = 'Video aa gaya!';
-                document.getElementById('remoteVideo').srcObject = remoteStream;
+            peer.on('open', (id) => {
+                statusEl.textContent = 'Room me ho. Doosre ka wait...';
+                // Doosre peer ko call karo (agar wo pehle se hai)
+                const call = peer.call('vc-' + roomId, localStream);
+                if (call) {
+                    currentCall = call;
+                    call.on('stream', showRemote);
+                }
             });
 
-            room.onPeerLeave((peerId) => {
-                statusEl.textContent = 'Peer chala gaya';
-                document.getElementById('remoteVideo').srcObject = null;
+            // Doosra banda aaye to uska call accept karo
+            peer.on('call', (call) => {
+                call.answer(localStream);
+                currentCall = call;
+                call.on('stream', showRemote);
             });
 
-        } catch (err) {
-            statusEl.textContent = 'Error: ' + err.message;
-            alert('Camera/Mic permission do: ' + err.message);
+            peer.on('error', (err) => {
+                console.log('Peer error:', err);
+                if (err.type === 'unavailable-id') {
+                    // Same room me doosra banda pehle se hai
+                    statusEl.textContent = 'Room me pehle se koi hai. Wait karo...';
+                } else {
+                    statusEl.textContent = 'Error: ' + err.type;
+                }
+            });
         }
+
+        initCamera();
     </script>
 </body>
 </html>
