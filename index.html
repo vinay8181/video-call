@@ -3,46 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supabase Video Call</title>
+    <title>Video Call</title>
     <style>
-        body { margin: 0; background: #000; display: flex; flex-wrap: wrap; }
+        body { margin: 0; background: #000; display: flex; flex-wrap: wrap; font-family: sans-serif; }
         video { width: 50%; height: 50vh; object-fit: cover; background: #111; }
+        #status { position: fixed; bottom: 10px; left: 10px; color: #fff; font-size: 14px; background: rgba(0,0,0,0.6); padding: 6px 10px; border-radius: 6px; }
     </style>
 </head>
 <body>
     <video id="localVideo" autoplay muted playsinline></video>
     <video id="remoteVideo" autoplay playsinline></video>
+    <div id="status">Connecting...</div>
 
     <script type="module">
         import { joinRoom } from 'https://cdn.skypack.dev/trystero@0.21/supabase';
 
-        // ⚠️ Yahan apne Supabase project ki details daalo
+        // ✅ Tumhari Supabase details
         const config = {
-            appId: 'https://YOUR-PROJECT.supabase.co',
-            supabaseKey: 'YOUR-ANON-KEY'
+            appId: 'https://yxbbejknyvktxswntift.supabase.co',
+            supabaseKey: 'sb_publishable_pxcSuKsu_SUvwrm-ng8xxg_yOoEarNK'
         };
 
         const ROOM_NAME = 'video-call-room';
+        const statusEl = document.getElementById('status');
 
         try {
+            statusEl.textContent = 'Camera on kar rahe hain...';
+
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: true,
                 audio: true
             });
             document.getElementById('localVideo').srcObject = stream;
 
+            statusEl.textContent = 'Room join kar rahe hain...';
+
             const room = joinRoom(config, ROOM_NAME);
             room.addStream(stream);
 
+            room.onPeerJoin((peerId) => {
+                statusEl.textContent = 'Peer connected: ' + peerId.slice(0,6);
+            });
+
             room.onPeerStream((remoteStream, peerId) => {
+                statusEl.textContent = 'Video aa gaya!';
                 document.getElementById('remoteVideo').srcObject = remoteStream;
             });
 
             room.onPeerLeave((peerId) => {
+                statusEl.textContent = 'Peer chala gaya';
                 document.getElementById('remoteVideo').srcObject = null;
             });
 
         } catch (err) {
+            statusEl.textContent = 'Error: ' + err.message;
             alert('Camera/Mic permission do: ' + err.message);
         }
     </script>
