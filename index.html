@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase Video Call</title>
+    <style>
+        body { margin: 0; background: #000; display: flex; flex-wrap: wrap; }
+        video { width: 50%; height: 50vh; object-fit: cover; background: #111; }
+    </style>
+</head>
+<body>
+    <video id="localVideo" autoplay muted playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+
+    <script type="module">
+        import { joinRoom } from 'https://cdn.skypack.dev/trystero@0.21/supabase';
+
+        // ⚠️ Yahan apne Supabase project ki details daalo
+        const config = {
+            appId: 'https://YOUR-PROJECT.supabase.co',
+            supabaseKey: 'YOUR-ANON-KEY'
+        };
+
+        const ROOM_NAME = 'video-call-room';
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+            document.getElementById('localVideo').srcObject = stream;
+
+            const room = joinRoom(config, ROOM_NAME);
+            room.addStream(stream);
+
+            room.onPeerStream((remoteStream, peerId) => {
+                document.getElementById('remoteVideo').srcObject = remoteStream;
+            });
+
+            room.onPeerLeave((peerId) => {
+                document.getElementById('remoteVideo').srcObject = null;
+            });
+
+        } catch (err) {
+            alert('Camera/Mic permission do: ' + err.message);
+        }
+    </script>
+</body>
+</html>
